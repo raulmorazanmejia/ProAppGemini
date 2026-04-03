@@ -1,59 +1,109 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { Mic, CheckCircle, UploadCloud } from 'lucide-react'
+import { Mic, Square, CheckCircle, Loader2 } from 'lucide-react'
 
 export default function StudentPage() {
   const [assignment, setAssignment] = useState(null)
-  const [status, setStatus] = useState('loading') // loading, idle, recording, success
+  const [studentName, setStudentName] = useState('')
+  const [status, setStatus] = useState('idle') // idle, recording, uploading, success
+  const mediaRecorder = useRef(null)
+  const audioChunks = useRef([])
 
   useEffect(() => {
     async function getTask() {
-      const { data } = await supabase.from('assignments').select('*').limit(1).single()
+      const { data } = await supabase.from('assignments').select('*').eq('is_active', true).limit(1).single()
       if (data) setAssignment(data)
-      setStatus('idle')
     }
     getTask()
   }, [])
 
-  if (status === 'loading') return <div className="p-20 text-center font-sans">Waking up the classroom...</div>
+  const startRecording = async () => {
+    if (!studentName) return alert("Please enter your name first!")
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    mediaRecorder.current = new MediaRecorder(stream)
+    audioChunks.current = []
 
-  const primaryColor = assignment?.theme_config?.primaryColor || '#3b82f6'
+    mediaRecorder.current.ondataavailable = (e) => audioChunks.current.push(e.data)
+    mediaRecorder.current.onstop = uploadAudio
+    mediaRecorder.current.start()
+    setStatus('recording')
+  }
 
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-sans">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100">
-        
-        {/* Header Decor */}
-        <div className="h-3 w-full" style={{ backgroundColor: primaryColor }}></div>
-        
-        <div className="p-8 text-center">
-          <h1 className="text-2xl font-bold text-slate-800 mb-4">
-            {assignment?.title || "Weekly Speaking Practice"}
-          </h1>
-          
-          <div className="bg-slate-50 rounded-2xl p-6 mb-8 border border-dashed border-slate-300">
-            <p className="text-slate-600 italic text-lg leading-relaxed">
-              "{assignment?.prompt_text || "Please wait for your teacher to post a prompt."}"
-            </p>
-          </div>
+  const stopRecording = () => {
+    mediaRecorder.current.stop()
+    setStatus('uploading')
+  }
 
-          {/* The Recorder Placeholder */}
-          <div className="flex flex-col items-center gap-4">
-            <button 
-              className="w-20 h-20 rounded-full flex items-center justify-center text-white shadow-lg transition-all hover:scale-110 active:scale-95"
-              style={{ backgroundColor: primaryColor }}
-            >
-              <Mic size={32} />
-            </button>
-            <p className="text-slate-400 font-medium text-sm tracking-wide uppercase">
-              Tap to Record
-            </p>
-          </div>
+  const uploadAudio = async () => {
+    const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
+    const fileName = `${Date.now()}-${studentName.replace(/\s/g, '_')}.webm`
+
+    // 1. Upload to Supabase Storage
+    const { data: storageData, error: storageError } = await supabase.storage
+      .from('recordings')
+      .upload(fileName, audioBlob)
+
+    if (storageError) return alert("Upload failed: " + storageError.message)
+
+    // 2. Log to Database
+    await supabase.from('submissions').insert([{
+      assignment_id: assignment.id,
+      student_name: studentName,
+      audio_path: fileName
+    }])
+
+    setStatus('success')
+  }
+
+  const color = assignment?.theme_config?.primaryColor || '#3b82f6'
+
+  if (status === 'success') {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 text-center">
+        <div className="bg-white p-10 rounded-3xl shadow-xl">
+          <CheckCircle className="mx-auto mb-4 text-green-500" size={64} />
+          <h2 className="text-2xl font-bold">Excellent work, {studentName}!</h2>
+          <p className="text-gray-500">Your recording has been sent to your teacher.</p>
         </div>
       </div>
-      
-      <p className="mt-8 text-slate-400 text-xs">Lone Star College ESL • Powered by Gemini & Supabase</p>
+    )
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-6">
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border">
+        <div className="h-2 w-full" style={{ backgroundColor: color }}></div>
+        <div className="p-8 text-center">
+          <input 
+            type="text" placeholder="Enter your full name"
+            className="w-full p-3 border rounded-xl mb-6 text-center outline-none focus:ring-2"
+            style={{ borderColor: color }}
+            value={studentName}
+            onChange={(e) => setStudentName(e.target.value)}
+          />
+          <h1 className="text-xl font-bold mb-4">{assignment?.title || "Speaking Task"}</h1>
+          <p className="bg-gray-50 p-4 rounded-xl italic mb-8">"{assignment?.prompt_text || "Waiting for prompt..."}"</p>
+
+          {status === 'idle' && (
+            <button onClick={startRecording} className="w-20 h-20 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-110" style={{ backgroundColor: color }}>
+              <Mic size={32} />
+            </button>
+          )}
+
+          {status === 'recording' && (
+            <button onClick={stopRecording} className="w-20 h-20 rounded-full flex items-center justify-center text-white shadow-lg animate-pulse" style={{ backgroundColor: '#ef4444' }}>
+              <Square size={32} />
+            </button>
+          )}
+
+          {status === 'uploading' && <Loader2 className="animate-spin mx-auto text-gray-400" size={48} />}
+          
+          <p className="mt-4 text-xs font-bold text-gray-400 uppercase tracking-widest">
+            {status === 'recording' ? 'Recording Now...' : 'Tap to Start'}
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
