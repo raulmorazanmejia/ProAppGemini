@@ -1,9 +1,13 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { Mic, Square, CheckCircle } from 'lucide-react'
+import { Mic, Square } from 'lucide-react'
 
-const supabase = createClient('https://twtlrehxjmduihfgmvul.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR3dGxyZWh4am1kdWxoZmdtdnVsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNzczMjMsImV4cCI6MjA5MDc1MzMyM30.lRmfe4N2PKX4Q0lJ-_fG9tUAb9Bh-r3Nr-G_diuu8OU')
+// THE ENGINE - HARDCODED DIRECTLY IN THE FILE
+const supabase = createClient(
+  'https://twtlrehxjmduihfgmvul.supabase.co', 
+  'sb_publishable_z_0bdiRubPVFWXscS6P6jw_Nipjt_69656166316238322d366366342d346430342d613239632d393165306631613936663235'
+)
 
 export default function StudentPage() {
   const [assignment, setAssignment] = useState(null)
@@ -42,12 +46,12 @@ export default function StudentPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 font-sans">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 text-center border">
-        <input type="text" placeholder="Your Name" className="w-full p-3 border rounded-xl mb-6 text-center" value={studentName} onChange={(e) => setStudentName(e.target.value)} />
-        <h1 className="text-xl font-bold mb-4">{assignment?.title || "Speaking Task"}</h1>
-        <p className="bg-slate-50 p-4 rounded-xl mb-8 border">"{assignment?.prompt_text || "Waiting for teacher..."}"</p>
-        <button onClick={status === 'recording' ? () => mediaRecorder.current.stop() : startRecording} className={`w-20 h-20 rounded-full flex items-center justify-center text-white ${status === 'recording' ? 'bg-red-500' : 'bg-blue-600'}`}>
-          {status === 'recording' ? <Square size={32} /> : <Mic size={32} />}
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-10 text-center border">
+        <input type="text" placeholder="Your Name" className="w-full p-4 border rounded-2xl mb-8 text-center font-bold" value={studentName} onChange={(e) => setStudentName(e.target.value)} />
+        <h1 className="text-2xl font-black mb-2 uppercase">{assignment?.title || "Speaking Task"}</h1>
+        <p className="bg-slate-50 p-6 rounded-2xl italic mb-10 border font-medium text-slate-600">"{assignment?.prompt_text || "Waiting for your teacher..."}"</p>
+        <button onClick={status === 'recording' ? () => mediaRecorder.current.stop() : startRecording} className={`w-24 h-24 rounded-full flex items-center justify-center text-white shadow-xl ${status === 'recording' ? 'bg-red-500 animate-pulse' : 'bg-blue-600'}`}>
+          {status === 'recording' ? <Square size={36} /> : <Mic size={36} />}
         </button>
       </div>
     </div>
