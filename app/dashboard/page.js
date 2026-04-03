@@ -17,7 +17,7 @@ export default function TeacherDashboard() {
   const checkPassword = (e) => {
     e.preventDefault()
     if (password === 'LoneStarTeacher') setIsAuthenticated(true)
-    else alert("Wrong password!")
+    else alert("Access Denied.")
   }
 
   useEffect(() => {
@@ -32,9 +32,7 @@ export default function TeacherDashboard() {
   }
 
   const togglePrompt = async (id, currentStatus) => {
-    // Turn off all prompts first
     await supabase.from('prompts').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000')
-    // Set the selected one to the opposite of what it was
     await supabase.from('prompts').update({ is_active: !currentStatus }).eq('id', id)
     loadData()
   }
@@ -45,7 +43,7 @@ export default function TeacherDashboard() {
         <Lock className="mx-auto mb-4 text-slate-300" size={40} />
         <h1 className="text-2xl font-bold mb-6">Teacher Office</h1>
         <input type="password" placeholder="Password" className="w-full p-4 border rounded-2xl mb-4 text-center" onChange={(e) => setPassword(e.target.value)} />
-        <button className="w-full bg-slate-800 text-white p-4 rounded-2xl font-bold hover:bg-slate-700 transition-colors">Enter Dashboard</button>
+        <button className="w-full bg-slate-800 text-white p-4 rounded-2xl font-bold">Enter</button>
       </form>
     </div>
   )
@@ -66,7 +64,7 @@ export default function TeacherDashboard() {
         </div>
         
         <div className="bg-white p-8 rounded-3xl shadow-lg border">
-          <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6">Student Submissions ({submissions.length})</h2>
+          <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6">Submissions ({submissions.length})</h2>
           <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
             {submissions.map((s) => (
               <div key={s.id} className="p-5 bg-slate-50 rounded-2xl border flex justify-between items-center">
@@ -74,7 +72,8 @@ export default function TeacherDashboard() {
                   <span className="font-black text-slate-800 block">{s.student_name}</span>
                   <span className="text-[10px] text-slate-400 uppercase tracking-tighter italic">{s.prompt_text}</span>
                 </div>
-                <a href={`https://cfpjjkfqkapamaulgysh.supabase.co/storage/v1/object/public/${s.audio_path}`} target="_blank" className="p-3 bg-white rounded-full border shadow-sm text-blue-600 hover:scale-110 transition-transform">
+                {/* FIXED: Using your direct audio_url column */}
+                <a href={s.audio_url} target="_blank" className="p-3 bg-white rounded-full border shadow-sm text-blue-600 hover:scale-110 transition-transform">
                   <Play size={20} fill="currentColor" />
                 </a>
               </div>
