@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { Mic, Square, CheckCircle, History, Lock, User, Loader2, Volume2 } from 'lucide-react'
+import { Mic, Square, CheckCircle, History, Lock, User, Loader2, Volume2, RefreshCw } from 'lucide-react'
 
 const supabase = createClient(
   'https://cfpjjkfqkapamaulgysh.supabase.co', 
@@ -39,7 +39,8 @@ export default function StudentGatekeeper() {
   }
 
   async function loadHistory(name) {
-    const { data } = await supabase.from('student_submissions').ilike('student_name', name).order('created_at', { ascending: false })
+    const cleanName = name.trim() // REMOVES SPACES
+    const { data } = await supabase.from('student_submissions').ilike('student_name', cleanName).order('created_at', { ascending: false })
     setMySubmissions(data || [])
   }
 
@@ -52,17 +53,17 @@ export default function StudentGatekeeper() {
         mediaRecorder.current.onstop = async () => {
             setStatus('uploading')
             const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
-            const fileName = `${Date.now()}-${profile.full_name}.webm`
+            const fileName = `${Date.now()}-${profile.full_name.replace(/\s+/g, '')}.webm`
             
             const { data: uploadData, error: uploadError } = await supabase.storage.from('Student-audio').upload(fileName, audioBlob)
             if (uploadError) return alert("Storage Error: " + uploadError.message)
             
             const publicUrl = `https://cfpjjkfqkapamaulgysh.supabase.co/storage/v1/object/public/Student-audio/${fileName}`
             const { error: dbError } = await supabase.from('student_submissions').insert([{ 
-                student_name: profile.full_name, 
+                student_name: profile.full_name.trim(), // SAVES WITHOUT SPACES
                 prompt_text: assignment?.prompt_text || "General Task",
                 audio_url: publicUrl,
-                audio_path: fileName // FIXED: Satisfies the database constraint
+                audio_path: fileName 
             }])
             
             if (dbError) return alert("Database Error: " + dbError.message)
@@ -94,7 +95,7 @@ export default function StudentGatekeeper() {
           <div className="absolute top-4 right-4 text-[10px] font-bold text-slate-300 uppercase flex items-center gap-1">
             <User size={12} /> {profile.full_name}
           </div>
-          <h1 className="text-xl font-black mb-4 uppercase tracking-tight text-slate-400">Current Task</h1>
+          <h1 className="text-xl font-black mb-4 uppercase tracking-tight text-slate-400 font-sans">Current Task</h1>
           <p className="text-2xl font-bold text-slate-800 mb-8 italic">"{assignment?.prompt_text || "No active task..."}"</p>
           <button onClick={status === 'recording' ? () => mediaRecorder.current.stop() : startRecording} 
                   className={`w-24 h-24 rounded-full mx-auto flex items-center justify-center text-white shadow-xl transition-all ${status === 'recording' ? 'bg-red-500 animate-pulse scale-110' : 'bg-blue-600 hover:bg-blue-700'}`}>
@@ -103,22 +104,29 @@ export default function StudentGatekeeper() {
         </div>
 
         <div className="space-y-4">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2 px-2"><History size={14}/> My Speaking History</h2>
+            <div className="flex justify-between items-center px-2">
+                <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2 font-sans"><History size={14}/> My History</h2>
+                <button onClick={() => loadHistory(profile.full_name)} className="text-blue-500 hover:rotate-180 transition-all duration-500">
+                    <RefreshCw size={14} />
+                </button>
+            </div>
+            
             <div className="space-y-4">
+                {mySubmissions.length === 0 && <p className="text-center text-slate-300 text-xs italic py-10">No recordings yet. Tap the mic to start!</p>}
                 {mySubmissions.map(s => (
                     <div key={s.id} className="bg-white p-6 rounded-3xl border shadow-sm flex flex-col gap-5">
                         <div className="flex justify-between items-start">
-                          <p className="text-sm font-bold text-slate-700 italic">"{s.prompt_text}"</p>
-                          <span className="text-[10px] font-bold text-slate-300 uppercase">{new Date(s.created_at).toLocaleDateString()}</span>
+                          <p className="text-sm font-bold text-slate-700 italic font-sans">"{s.prompt_text}"</p>
+                          <span className="text-[10px] font-bold text-slate-300 uppercase font-sans">{new Date(s.created_at).toLocaleDateString()}</span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
                             <div className="flex flex-col gap-2">
-                                <span className="text-[10px] font-black uppercase text-slate-400">My Voice</span>
+                                <span className="text-[10px] font-black uppercase text-slate-400 font-sans">My Voice</span>
                                 <audio src={s.audio_url} controls className="w-full h-8" />
                             </div>
                             {s.feedback_url && (
-                                <div className="bg-green-600 p-3 rounded-2xl flex flex-col gap-2 shadow-inner">
-                                    <span className="text-[10px] font-black uppercase text-white flex items-center gap-1"><Volume2 size={12}/> Professor Morazán's Feedback</span>
+                                <div className="bg-green-600 p-4 rounded-2xl flex flex-col gap-2 shadow-lg">
+                                    <span className="text-[10px] font-black uppercase text-white flex items-center gap-1 font-sans"><Volume2 size={12}/> Professor Morazán's Feedback</span>
                                     <audio src={s.feedback_url} controls className="w-full h-8 invert" />
                                 </div>
                             )}
