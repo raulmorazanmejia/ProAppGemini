@@ -72,8 +72,9 @@ export default function TeacherDashboard() {
       const { error: subError } = await supabase.from('student_submissions').delete().eq('student_name', name);
       if (subError) alert("Database Error (Submissions): " + subError.message);
       
-      const { error: studentError } = await supabase.from('students').delete().eq('id', id); 
+      const { error: studentError, data: deletedStudent } = await supabase.from('students').delete().eq('id', id).select(); 
       if (studentError) alert("Database Error (Students): " + studentError.message);
+      else if (!deletedStudent || deletedStudent.length === 0) alert("Supabase blocked the deletion! Please enable DELETE policies in your Supabase Dashboard.");
       
       loadData(); 
     }
@@ -115,8 +116,9 @@ export default function TeacherDashboard() {
         if (error) alert("Warning: Could not delete audio files. " + error.message);
       }
       
-      const { error: dbError } = await supabase.from('student_submissions').delete().eq('id', id);
+      const { error: dbError, data: deletedSub } = await supabase.from('student_submissions').delete().eq('id', id).select();
       if (dbError) alert("Database Error: " + dbError.message);
+      else if (!deletedSub || deletedSub.length === 0) alert("Supabase blocked the database deletion! Please enable DELETE policies in your Supabase Dashboard.");
       
       loadData();
     }
