@@ -56,8 +56,17 @@ export default function TeacherDashboard() {
     else { setNewStudent({ name: '', code: '' }); loadData(); }
   }
 
-  const deleteStudent = async (id) => {
-    if (confirm("Remove student?")) { await supabase.from('students').delete().eq('id', id); loadData(); }
+  const deleteStudent = async (id, name) => {
+    if (confirm("Remove student and all their submissions?")) {
+      const { data: studentSubs } = await supabase.from('student_submissions').select('audio_path').eq('student_name', name);
+      const pathsToDelete = studentSubs?.map(sub => sub.audio_path).filter(Boolean) || [];
+      if (pathsToDelete.length > 0) {
+        await supabase.storage.from('Student-audio').remove(pathsToDelete);
+      }
+      await supabase.from('student_submissions').delete().eq('student_name', name);
+      await supabase.from('students').delete().eq('id', id); 
+      loadData(); 
+    }
   }
 
   const togglePrompt = async (id, currentStatus) => {
@@ -86,6 +95,16 @@ export default function TeacherDashboard() {
     setRecordingId(id)
   }
 
+  const handleDeleteSubmission = async (id, audioPath) => {
+    if (confirm("Delete this submission and its audio file?")) {
+      if (audioPath) {
+        await supabase.storage.from('Student-audio').remove([audioPath]);
+      }
+      await supabase.from('student_submissions').delete().eq('id', id);
+      loadData();
+    }
+  }
+
   if (!isAuthenticated) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
       <form onSubmit={checkPassword} className="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-sm text-center">
@@ -112,7 +131,7 @@ export default function TeacherDashboard() {
               {roster.map(s => (
                   <div key={s.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border">
                       <span className="font-bold">{s.full_name} <span className="opacity-30">({s.student_code})</span></span>
-                      <button onClick={() => deleteStudent(s.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
+                      <button onClick={() => deleteStudent(s.id, s.full_name)} className="text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
                   </div>
               ))}
           </div>
@@ -138,7 +157,10 @@ export default function TeacherDashboard() {
                     <div key={s.id} className="p-5 bg-slate-50 rounded-2xl border border-slate-200">
                       <div className="flex justify-between items-center mb-3">
                         <span className="font-black text-slate-800 text-sm flex items-center gap-2"><User size={14}/> {s.student_name}</span>
-                        <audio src={s.audio_url} controls className="h-8 w-32" />
+                        <div className="flex items-center gap-3">
+                          <audio src={s.audio_url} controls className="h-8 w-32" />
+                          <button onClick={() => handleDeleteSubmission(s.id, s.audio_path)} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
+                        </div>
                       </div>
                       <div className="pt-4 border-t">
                         {s.feedback_url ? (
