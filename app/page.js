@@ -39,8 +39,11 @@ export default function StudentGatekeeper() {
   }
 
   async function loadHistory(name) {
-    const cleanName = name.trim() // REMOVES SPACES
-    const { data } = await supabase.from('student_submissions').ilike('student_name', cleanName).order('created_at', { ascending: false })
+    if (!name) return;
+    const cleanName = name.trim();
+    const { data } = await supabase.from('student_submissions')
+        .ilike('student_name', cleanName)
+        .order('created_at', { ascending: false })
     setMySubmissions(data || [])
   }
 
@@ -60,10 +63,10 @@ export default function StudentGatekeeper() {
             
             const publicUrl = `https://cfpjjkfqkapamaulgysh.supabase.co/storage/v1/object/public/Student-audio/${fileName}`
             const { error: dbError } = await supabase.from('student_submissions').insert([{ 
-                student_name: profile.full_name.trim(), // SAVES WITHOUT SPACES
+                student_name: profile.full_name.trim(), 
                 prompt_text: assignment?.prompt_text || "General Task",
                 audio_url: publicUrl,
-                audio_path: fileName 
+                audio_path: fileName // Satisfies database constraint
             }])
             
             if (dbError) return alert("Database Error: " + dbError.message)
@@ -80,10 +83,10 @@ export default function StudentGatekeeper() {
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 font-sans">
       <div className="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-sm text-center">
         <Lock className="mx-auto mb-4 text-blue-600" size={40} />
-        <h1 className="text-2xl font-bold mb-6 text-slate-800">Class Login</h1>
+        <h1 className="text-2xl font-bold mb-6 text-slate-800 text-sans">Class Login</h1>
         <input type="text" placeholder="Your Code" className="w-full p-4 border rounded-2xl mb-4 text-center font-bold text-slate-900 bg-slate-50 uppercase" 
                onChange={(e) => setStudentCode(e.target.value)} />
-        <button onClick={() => verifyCode(studentCode)} className="w-full bg-blue-600 text-white p-4 rounded-2xl font-bold">Enter</button>
+        <button onClick={() => verifyCode(studentCode)} className="w-full bg-blue-600 text-white p-4 rounded-2xl font-bold hover:bg-blue-700 transition-all">Enter</button>
       </div>
     </div>
   )
@@ -110,9 +113,7 @@ export default function StudentGatekeeper() {
                     <RefreshCw size={14} />
                 </button>
             </div>
-            
             <div className="space-y-4">
-                {mySubmissions.length === 0 && <p className="text-center text-slate-300 text-xs italic py-10">No recordings yet. Tap the mic to start!</p>}
                 {mySubmissions.map(s => (
                     <div key={s.id} className="bg-white p-6 rounded-3xl border shadow-sm flex flex-col gap-5">
                         <div className="flex justify-between items-start">
