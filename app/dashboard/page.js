@@ -9,6 +9,7 @@ const supabase = createClient(
 )
 
 export default function TeacherDashboard() {
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [prompts, setPrompts] = useState([])
@@ -20,8 +21,9 @@ export default function TeacherDashboard() {
   const audioChunks = useRef([])
 
   useEffect(() => {
-    const session = localStorage.getItem('teacher_session')
-    if (session === 'active') setIsAuthenticated(true)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) setIsAuthenticated(true)
+    })
   }, [])
 
   useEffect(() => {
@@ -37,12 +39,11 @@ export default function TeacherDashboard() {
     setRoster(rList || [])
   }
 
-  const checkPassword = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault()
-    if (password === 'LoneStarTeacher') {
-      localStorage.setItem('teacher_session', 'active')
-      setIsAuthenticated(true)
-    } else { alert("Wrong password!") }
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) alert("Login failed: " + error.message)
+    else setIsAuthenticated(true)
   }
 
   const addStudent = async (e) => {
@@ -126,9 +127,10 @@ export default function TeacherDashboard() {
 
   if (!isAuthenticated) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
-      <form onSubmit={checkPassword} className="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-sm text-center">
+      <form onSubmit={handleLogin} className="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-sm text-center">
         <Lock className="mx-auto mb-4 text-blue-600" size={40} />
         <h1 className="text-2xl font-bold mb-6 text-slate-800">Teacher Login</h1>
+        <input type="email" placeholder="Email" className="w-full p-4 border rounded-2xl mb-4 text-center font-bold" onChange={(e) => setEmail(e.target.value)} />
         <input type="password" placeholder="Password" className="w-full p-4 border rounded-2xl mb-4 text-center font-bold" onChange={(e) => setPassword(e.target.value)} />
         <button className="w-full bg-blue-600 text-white p-4 rounded-2xl font-bold">Enter</button>
       </form>
@@ -137,6 +139,11 @@ export default function TeacherDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 md:p-12 text-slate-900 font-sans">
+      <div className="max-w-7xl mx-auto mb-6 flex justify-end">
+        <button onClick={async () => { await supabase.auth.signOut(); setIsAuthenticated(false); }} className="text-sm font-bold text-slate-400 hover:text-red-500 transition-colors">
+          Logout
+        </button>
+      </div>
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
         
         <div className="lg:col-span-3 bg-white p-8 rounded-3xl shadow-lg border">
