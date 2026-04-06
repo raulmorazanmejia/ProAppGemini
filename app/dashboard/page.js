@@ -52,12 +52,12 @@ export default function TeacherDashboard() {
         full_name: newStudent.name.trim().toLowerCase(), 
         student_code: newStudent.code.toLowerCase().trim() 
     }])
-    if (error) alert("Error adding student. Code might already be in use.")
+    if (error) alert("Error adding student. Code taken?")
     else { setNewStudent({ name: '', code: '' }); loadData(); }
   }
 
   const deleteStudent = async (id) => {
-    if (confirm("Remove student from roster?")) { await supabase.from('students').delete().eq('id', id); loadData(); }
+    if (confirm("Remove student?")) { await supabase.from('students').delete().eq('id', id); loadData(); }
   }
 
   const togglePrompt = async (id, currentStatus) => {
@@ -100,6 +100,7 @@ export default function TeacherDashboard() {
   return (
     <div className="min-h-screen bg-slate-50 p-6 md:p-12 text-slate-900 font-sans">
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
         <div className="lg:col-span-3 bg-white p-8 rounded-3xl shadow-lg border">
           <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6">Class Roster</h2>
           <form onSubmit={addStudent} className="space-y-3 mb-6">
@@ -119,7 +120,7 @@ export default function TeacherDashboard() {
 
         <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="bg-white p-8 rounded-3xl shadow-lg border">
-                <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6">Prompts</h2>
+                <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6">Tasks</h2>
                 <div className="space-y-3">
                   {prompts.map(p => (
                     <div key={p.id} onClick={() => togglePrompt(p.id, p.is_active)} className={`p-4 rounded-2xl border cursor-pointer flex justify-between items-center ${p.is_active ? 'bg-blue-50 border-blue-400' : 'bg-white hover:bg-slate-50'}`}>
@@ -134,7 +135,7 @@ export default function TeacherDashboard() {
                 <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6">Student Work</h2>
                 <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
                   {submissions.map((s) => (
-                    <div key={s.id} className="p-5 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm">
+                    <div key={s.id} className="p-5 bg-slate-50 rounded-2xl border border-slate-200">
                       <div className="flex justify-between items-center mb-3">
                         <span className="font-black text-slate-800 text-sm flex items-center gap-2"><User size={14}/> {s.student_name}</span>
                         <audio src={s.audio_url} controls className="h-8 w-32" />
@@ -147,7 +148,7 @@ export default function TeacherDashboard() {
                             </div>
                         ) : (
                             <button onClick={recordingId === s.id ? () => mediaRecorder.current.stop() : () => startFeedback(s.id)}
-                              className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl font-bold text-xs transition-all ${recordingId === s.id ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-white hover:bg-slate-700 shadow-sm'}`}>
+                              className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl font-bold text-xs transition-all ${recordingId === s.id ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
                               {recordingId === s.id ? <Square size={14} /> : <Mic size={14} />}
                               {recordingId === s.id ? 'Recording Feedback...' : 'Record Feedback'}
                             </button>
