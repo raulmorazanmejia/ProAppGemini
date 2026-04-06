@@ -58,10 +58,15 @@ export default function TeacherDashboard() {
 
   const deleteStudent = async (id, name) => {
     if (confirm("Remove student and all their submissions?")) {
-      const { data: studentSubs } = await supabase.from('student_submissions').select('audio_path').eq('student_name', name);
-      const pathsToDelete = studentSubs?.map(sub => sub.audio_path).filter(Boolean) || [];
+      const { data: studentSubs } = await supabase.from('student_submissions').select('audio_url, feedback_url').eq('student_name', name);
+      const pathsToDelete = [];
+      studentSubs?.forEach(sub => {
+        if (sub.audio_url) pathsToDelete.push(sub.audio_url.split('/').pop().split('?')[0]);
+        if (sub.feedback_url) pathsToDelete.push(sub.feedback_url.split('/').pop().split('?')[0]);
+      });
       if (pathsToDelete.length > 0) {
-        await supabase.storage.from('Student-audio').remove(pathsToDelete);
+        const { error } = await supabase.storage.from('Student-audio').remove(pathsToDelete);
+        if (error) alert("Warning: Could not delete audio files. " + error.message);
       }
       await supabase.from('student_submissions').delete().eq('student_name', name);
       await supabase.from('students').delete().eq('id', id); 
@@ -95,10 +100,14 @@ export default function TeacherDashboard() {
     setRecordingId(id)
   }
 
-  const handleDeleteSubmission = async (id, audioPath) => {
+  const handleDeleteSubmission = async (id, audioUrl, feedbackUrl) => {
     if (confirm("Delete this submission and its audio file?")) {
-      if (audioPath) {
-        await supabase.storage.from('Student-audio').remove([audioPath]);
+      const pathsToDelete = [];
+      if (audioUrl) pathsToDelete.push(audioUrl.split('/').pop().split('?')[0]);
+      if (feedbackUrl) pathsToDelete.push(feedbackUrl.split('/').pop().split('?')[0]);
+      if (pathsToDelete.length > 0) {
+        const { error } = await supabase.storage.from('Student-audio').remove(pathsToDelete);
+        if (error) alert("Warning: Could not delete audio files. " + error.message);
       }
       await supabase.from('student_submissions').delete().eq('id', id);
       loadData();
@@ -159,7 +168,7 @@ export default function TeacherDashboard() {
                         <span className="font-black text-slate-800 text-sm flex items-center gap-2"><User size={14}/> {s.student_name}</span>
                         <div className="flex items-center gap-3">
                           <audio src={s.audio_url} controls className="h-8 w-32" />
-                          <button onClick={() => handleDeleteSubmission(s.id, s.audio_path)} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
+                          <button onClick={() => handleDeleteSubmission(s.id, s.audio_url, s.feedback_url)} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
                         </div>
                       </div>
                       <div className="pt-4 border-t">
