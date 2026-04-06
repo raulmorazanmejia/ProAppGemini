@@ -68,8 +68,13 @@ export default function TeacherDashboard() {
         const { error } = await supabase.storage.from('Student-audio').remove(pathsToDelete);
         if (error) alert("Warning: Could not delete audio files. " + error.message);
       }
-      await supabase.from('student_submissions').delete().eq('student_name', name);
-      await supabase.from('students').delete().eq('id', id); 
+      
+      const { error: subError } = await supabase.from('student_submissions').delete().eq('student_name', name);
+      if (subError) alert("Database Error (Submissions): " + subError.message);
+      
+      const { error: studentError } = await supabase.from('students').delete().eq('id', id); 
+      if (studentError) alert("Database Error (Students): " + studentError.message);
+      
       loadData(); 
     }
   }
@@ -109,7 +114,10 @@ export default function TeacherDashboard() {
         const { error } = await supabase.storage.from('Student-audio').remove(pathsToDelete);
         if (error) alert("Warning: Could not delete audio files. " + error.message);
       }
-      await supabase.from('student_submissions').delete().eq('id', id);
+      
+      const { error: dbError } = await supabase.from('student_submissions').delete().eq('id', id);
+      if (dbError) alert("Database Error: " + dbError.message);
+      
       loadData();
     }
   }
