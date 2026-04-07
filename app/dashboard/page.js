@@ -91,38 +91,29 @@ const startFeedback = async (id) => {
     mediaRecorder.current = new MediaRecorder(stream)
     audioChunks.current = []
     mediaRecorder.current.ondataavailable = (e) => audioChunks.current.push(e.data)
-    
     mediaRecorder.current.onstop = async () => {
-      try {
-        const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
-        const fileName = `feedback-${id}-${Date.now()}.webm`
-        
-        // POINT TO THE CORRECT BUCKET: teacher-audio
-        const { data, error: uploadError } = await supabase.storage
-          .from('teacher-audio') 
-          .upload(fileName, audioBlob)
-
-        if (uploadError) {
-          alert("Upload failed: " + uploadError.message)
-          setRecordingId(null) // Reset the button so it's not stuck
-          return
-        }
-
-        if (data) {
-          const url = `https://cfpjjkfqkapamaulgysh.supabase.co/storage/v1/object/public/teacher-audio/${fileName}`
-          const { error: dbError } = await supabase.from('flair_submissions').update({ feedback_url: url }).eq('id', id)
-          
-          if (dbError) alert("Database Error: " + dbError.message)
-          loadData()
-        }
-      } catch (err) {
-        console.error(err)
-        alert("An unexpected error occurred.")
-      } finally {
-        setRecordingId(null) // This breaks the "loop" no matter what happens
+      const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
+      const fileName = `feedback-${id}-${Date.now()}.webm`
+      
+      // 1. CHANGED TO teacher-audio
+      const { data, error: uploadError } = await supabase.storage.from('teacher-audio').upload(fileName, audioBlob)
+      
+      if (uploadError) {
+        alert("Upload Error: " + uploadError.message) // This stops it from being silent
+        setRecordingId(null)
+        return
       }
+
+      if (data) {
+        // 2. UPDATED URL TO teacher-audio
+        const url = `https://cfpjjkfqkapamaulgysh.supabase.co/storage/v1/object/public/teacher-audio/${fileName}`
+        const { error: dbError } = await supabase.from('flair_submissions').update({ feedback_url: url }).eq('id', id)
+        
+        if (dbError) alert("Database Error: " + dbError.message)
+        loadData()
+      }
+      setRecordingId(null)
     }
-    
     mediaRecorder.current.start()
     setRecordingId(id)
   }
