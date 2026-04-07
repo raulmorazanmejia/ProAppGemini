@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { CheckCircle, Lock, Mic, Square, Trash2, User, Volume2 } from 'lucide-react'
+import { CheckCircle, Lock, Mic, Square, Trash2, User, Volume2, Send, RotateCcw } from 'lucide-react'
 
 const supabase = createClient(
   'https://cfpjjkfqkapamaulgysh.supabase.co', 
@@ -17,6 +17,7 @@ export default function TeacherDashboard() {
   const [roster, setRoster] = useState([])
   const [newStudent, setNewStudent] = useState({ name: '', code: '' })
   const [recordingId, setRecordingId] = useState(null)
+  const [previewAudio, setPreviewAudio] = useState(null) // { id, blob, url }
   const mediaRecorder = useRef(null)
   const audioChunks = useRef([])
 
@@ -25,6 +26,7 @@ export default function TeacherDashboard() {
       if (session) setIsAuthenticated(true)
     })
   }, [])
+
   useEffect(() => {
     if (isAuthenticated) loadData()
   }, [isAuthenticated])
@@ -57,7 +59,7 @@ export default function TeacherDashboard() {
   }
 
   const deleteStudent = async (id, name) => {
-    if (confirm("Remove student and all their submissions?")) {
+    if (confirm(`Remove ${name} and all their submissions?`)) {
       const { data: studentSubs } = await supabase.from('flair_submissions').select('audio_url, feedback_url').eq('student_name', name);
       const pathsToDelete = [];
       studentSubs?.forEach(sub => {
@@ -65,17 +67,11 @@ export default function TeacherDashboard() {
         if (sub.feedback_url) pathsToDelete.push(sub.feedback_url.split('/').pop().split('?')[0]);
       });
       if (pathsToDelete.length > 0) {
-        const { error } = await supabase.storage.from('Student-audio').remove(pathsToDelete);
-        if (error) alert("Warning: Could not delete audio files. " + error.message);
+        await supabase.storage.from('Student-audio').remove(pathsToDelete);
+        await supabase.storage.from('teacher-audio').remove(pathsToDelete);
       }
-      
-      const { error: subError } = await supabase.from('flair_submissions').delete().eq('student_name', name);
-      if (subError) alert("Database Error (Submissions): " + subError.message);
-      
-      const { error: studentError, data: deletedStudent } = await supabase.from('flair_students').delete().eq('id', id).select(); 
-      if (studentError) alert("Database Error (Students): " + studentError.message);
-      else if (!deletedStudent || deletedStudent.length === 0) alert("Supabase blocked the deletion! Please enable DELETE policies in your Supabase Dashboard.");
-      
+      await supabase.from('flair_submissions').delete().eq('student_name', name);
+      await supabase.from('flair_students').delete().eq('id', id);
       loadData(); 
     }
   }
@@ -86,52 +82,54 @@ export default function TeacherDashboard() {
     loadData()
   }
 
-const startFeedback = async (id) => {
+  const startFeedback = async (id) => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     mediaRecorder.current = new MediaRecorder(stream)
     audioChunks.current = []
     mediaRecorder.current.ondataavailable = (e) => audioChunks.current.push(e.data)
-    mediaRecorder.current.onstop = async () => {
+    mediaRecorder.current.onstop = () => {
       const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
-      const fileName = `feedback-${id}-${Date.now()}.webm`
-      
-      // 1. CHANGED TO teacher-audio
-      const { data, error: uploadError } = await supabase.storage.from('teacher-audio').upload(fileName, audioBlob)
-      
-      if (uploadError) {
-        alert("Upload Error: " + uploadError.message) // This stops it from being silent
-        setRecordingId(null)
-        return
-      }
-
-      if (data) {
-        // 2. UPDATED URL TO teacher-audio
-        const url = `https://cfpjjkfqkapamaulgysh.supabase.co/storage/v1/object/public/teacher-audio/${fileName}`
-        const { error: dbError } = await supabase.from('flair_submissions').update({ feedback_url: url }).eq('id', id)
-        
-        if (dbError) alert("Database Error: " + dbError.message)
-        loadData()
-      }
+      const localUrl = URL.createObjectURL(audioBlob)
+      setPreviewAudio({ id, blob: audioBlob, url: localUrl })
       setRecordingId(null)
     }
     mediaRecorder.current.start()
     setRecordingId(id)
   }
 
+  const pushFeedback = async () => {
+    if (!previewAudio) return
+    const { id, blob } = previewAudio
+    const fileName = `feedback-${id}-${Date.now()}.webm`
+    
+    const { data, error: uploadError } = await supabase.storage.from('teacher-audio').upload(fileName, blob)
+    if (uploadError) {
+      alert("Upload Failed: " + uploadError.message)
+      return
+    }
+
+    const url = `https://cfpjjkfqkapamaulgysh.supabase.co/storage/v1/object/public/teacher-audio/${fileName}`
+    const { error: dbError } = await supabase.from('flair_submissions').update({ feedback_url: url }).eq('id', id)
+    
+    if (dbError) alert("Database Error: " + dbError.message)
+    setPreviewAudio(null)
+    loadData()
+  }
+
+  const deleteFeedback = async (id, feedbackUrl) => {
+    if (confirm("Delete this feedback and record a new one?")) {
+      const fileName = feedbackUrl.split('/').pop().split('?')[0];
+      await supabase.storage.from('teacher-audio').remove([fileName]);
+      await supabase.from('flair_submissions').update({ feedback_url: null }).eq('id', id);
+      loadData();
+    }
+  }
+
   const handleDeleteSubmission = async (id, audioUrl, feedbackUrl) => {
-    if (confirm("Delete this submission and its audio file?")) {
-      const pathsToDelete = [];
-      if (audioUrl) pathsToDelete.push(audioUrl.split('/').pop().split('?')[0]);
-      if (feedbackUrl) pathsToDelete.push(feedbackUrl.split('/').pop().split('?')[0]);
-      if (pathsToDelete.length > 0) {
-        const { error } = await supabase.storage.from('Student-audio').remove(pathsToDelete);
-        if (error) alert("Warning: Could not delete audio files. " + error.message);
-      }
-      
-      const { error: dbError, data: deletedSub } = await supabase.from('flair_submissions').delete().eq('id', id).select();
-      if (dbError) alert("Database Error: " + dbError.message);
-      else if (!deletedSub || deletedSub.length === 0) alert("Supabase blocked the database deletion! Please enable DELETE policies in your Supabase Dashboard.");
-      
+    if (confirm("Delete this submission entirely?")) {
+      if (audioUrl) await supabase.storage.from('Student-audio').remove([audioUrl.split('/').pop().split('?')[0]]);
+      if (feedbackUrl) await supabase.storage.from('teacher-audio').remove([feedbackUrl.split('/').pop().split('?')[0]]);
+      await supabase.from('flair_submissions').delete().eq('id', id);
       loadData();
     }
   }
@@ -151,12 +149,11 @@ const startFeedback = async (id) => {
   return (
     <div className="min-h-screen bg-slate-50 p-6 md:p-12 text-slate-900 font-sans">
       <div className="max-w-7xl mx-auto mb-6 flex justify-end">
-        <button onClick={async () => { await supabase.auth.signOut(); setIsAuthenticated(false); }} className="text-sm font-bold text-slate-400 hover:text-red-500 transition-colors">
-          Logout
-        </button>
+        <button onClick={async () => { await supabase.auth.signOut(); setIsAuthenticated(false); }} className="text-sm font-bold text-slate-400 hover:text-red-500 transition-colors">Logout</button>
       </div>
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
         
+        {/* ROSTER COLUMN */}
         <div className="lg:col-span-3 bg-white p-8 rounded-3xl shadow-lg border">
           <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6">Class Roster</h2>
           <form onSubmit={addStudent} className="space-y-3 mb-6">
@@ -174,50 +171,68 @@ const startFeedback = async (id) => {
           </div>
         </div>
 
-        <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="bg-white p-8 rounded-3xl shadow-lg border">
-                <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6">Tasks</h2>
-                <div className="space-y-3">
-                  {prompts.map(p => (
-                    <div key={p.id} onClick={() => togglePrompt(p.id, p.is_active)} className={`p-4 rounded-2xl border cursor-pointer flex justify-between items-center ${p.is_active ? 'bg-blue-50 border-blue-400' : 'bg-white hover:bg-slate-50'}`}>
-                      <span className="text-sm font-bold">{p.prompt_text}</span>
-                      {p.is_active && <CheckCircle className="text-blue-500" size={20} />}
-                    </div>
-                  ))}
+        {/* TASKS COLUMN */}
+        <div className="lg:col-span-4 bg-white p-8 rounded-3xl shadow-lg border">
+            <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6">Tasks</h2>
+            <div className="space-y-3">
+              {prompts.map(p => (
+                <div key={p.id} onClick={() => togglePrompt(p.id, p.is_active)} className={`p-4 rounded-2xl border cursor-pointer flex justify-between items-center ${p.is_active ? 'bg-blue-50 border-blue-400' : 'bg-white hover:bg-slate-50'}`}>
+                  <span className="text-sm font-bold">{p.prompt_text}</span>
+                  {p.is_active && <CheckCircle className="text-blue-500" size={20} />}
                 </div>
-            </div>
-
-            <div className="bg-white p-8 rounded-3xl shadow-lg border">
-                <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6">Student Work</h2>
-                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-                  {submissions.map((s) => (
-                    <div key={s.id} className="p-5 bg-slate-50 rounded-2xl border border-slate-200">
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="font-black text-slate-800 text-sm flex items-center gap-2"><User size={14}/> {s.student_name}</span>
-                        <div className="flex items-center gap-3">
-                          <audio src={s.audio_url} controls className="h-8 w-32" />
-                          <button onClick={() => handleDeleteSubmission(s.id, s.audio_url, s.feedback_url)} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
-                        </div>
-                      </div>
-                      <div className="pt-4 border-t">
-                        {s.feedback_url ? (
-                            <div className="bg-blue-600 p-3 rounded-xl flex justify-between items-center shadow-md">
-                                <span className="text-[10px] font-bold text-white uppercase">My Feedback</span>
-                                <audio src={s.feedback_url} controls className="h-8 w-32 invert" />
-                            </div>
-                        ) : (
-                            <button onClick={recordingId === s.id ? () => mediaRecorder.current.stop() : () => startFeedback(s.id)}
-                              className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl font-bold text-xs transition-all ${recordingId === s.id ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
-                              {recordingId === s.id ? <Square size={14} /> : <Mic size={14} />}
-                              {recordingId === s.id ? 'Recording Feedback...' : 'Record Feedback'}
-                            </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              ))}
             </div>
         </div>
+
+        {/* STUDENT WORK COLUMN */}
+        <div className="lg:col-span-5 bg-white p-8 rounded-3xl shadow-lg border">
+            <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-6">Student Work</h2>
+            <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+              {submissions.map((s) => (
+                <div key={s.id} className="p-5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="font-black text-slate-800 text-sm flex items-center gap-2"><User size={14}/> {s.student_name}</span>
+                    <div className="flex items-center gap-3">
+                      <audio src={s.audio_url} controls className="h-8 w-32" />
+                      <button onClick={() => handleDeleteSubmission(s.id, s.audio_url, s.feedback_url)} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
+                    </div>
+                  </div>
+                  <div className="pt-4 border-t">
+                    {s.feedback_url ? (
+                        <div className="bg-blue-600 p-3 rounded-xl shadow-md space-y-2">
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-bold text-white uppercase">Sent to Student</span>
+                                <button onClick={() => deleteFeedback(s.id, s.feedback_url)} className="text-blue-200 hover:text-white"><Trash2 size={14}/></button>
+                            </div>
+                            <audio src={s.feedback_url} controls className="h-8 w-full invert" />
+                        </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {previewAudio?.id === s.id ? (
+                          <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl space-y-3">
+                            <span className="text-[10px] font-black uppercase text-amber-600 block">Reviewing Recording...</span>
+                            <audio src={previewAudio.url} controls className="w-full h-8" />
+                            <div className="flex gap-2">
+                              <button onClick={() => setPreviewAudio(null)} className="flex-1 bg-white border border-slate-200 text-slate-700 p-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1"><RotateCcw size={12}/> Redo</button>
+                              <button onClick={pushFeedback} className="flex-[2] bg-green-600 text-white p-2 rounded-xl text-xs font-bold shadow-md flex items-center justify-center gap-1"><Send size={12}/> Push to Student</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={recordingId === s.id ? () => mediaRecorder.current.stop() : () => startFeedback(s.id)}
+                            className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl font-bold text-xs transition-all ${recordingId === s.id ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+                            {recordingId === s.id ? <Square size={14} /> : <Mic size={14} />}
+                            {recordingId === s.id ? 'Stop & Review' : 'Record Feedback'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+        </div>
+
       </div>
     </div>
   )
