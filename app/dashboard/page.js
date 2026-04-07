@@ -32,7 +32,7 @@ export default function TeacherDashboard() {
   async function loadData() {
     const { data: pList } = await supabase.from('prompts').select('*').order('created_at', { ascending: false })
     const { data: sList } = await supabase.from('flair_submissions').select('*').order('created_at', { ascending: false })
-    const { data: rList } = await supabase.from('students').select('*').order('full_name', { ascending: true })
+    const { data: rList } = await supabase.from('flair_students').select('*').order('full_name', { ascending: true })
     setPrompts(pList || [])
     setSubmissions(sList || [])
     setRoster(rList || [])
@@ -48,7 +48,7 @@ export default function TeacherDashboard() {
   const addStudent = async (e) => {
     e.preventDefault()
     if (!newStudent.name || !newStudent.code) return
-    const { error } = await supabase.from('students').insert([{ 
+    const { error } = await supabase.from('flair_students').insert([{ 
         full_name: newStudent.name.trim().toLowerCase(), 
         student_code: newStudent.code.toLowerCase().trim() 
     }])
@@ -72,7 +72,7 @@ export default function TeacherDashboard() {
       const { error: subError } = await supabase.from('flair_submissions').delete().eq('student_name', name);
       if (subError) alert("Database Error (Submissions): " + subError.message);
       
-      const { error: studentError, data: deletedStudent } = await supabase.from('students').delete().eq('id', id).select(); 
+      const { error: studentError, data: deletedStudent } = await supabase.from('flair_students').delete().eq('id', id).select(); 
       if (studentError) alert("Database Error (Students): " + studentError.message);
       else if (!deletedStudent || deletedStudent.length === 0) alert("Supabase blocked the deletion! Please enable DELETE policies in your Supabase Dashboard.");
       

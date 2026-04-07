@@ -32,7 +32,7 @@ export default function StudentGatekeeper() {
 
   async function verifyCode(code) {
     const cleanCode = code.trim().toLowerCase()
-    const { data } = await supabase.from('students').select('*').eq('student_code', cleanCode).maybeSingle()
+    const { data } = await supabase.from('flair_students').select('*').eq('student_code', cleanCode).maybeSingle()
     if (data) {
         setProfile(data)
         localStorage.setItem('esl_student_code', cleanCode)
