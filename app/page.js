@@ -43,7 +43,7 @@ export default function StudentGatekeeper() {
   async function loadHistory(name) {
     if (!name) return;
     const searchName = name.trim().toLowerCase(); 
-    const { data } = await supabase.from('student_submissions')
+    const { data } = await supabase.from('flair_submissions')
         .select('*') 
         .eq('student_name', searchName) 
         .order('created_at', { ascending: false })
@@ -76,7 +76,7 @@ export default function StudentGatekeeper() {
     if (uploadError) return alert("Upload failed: " + uploadError.message)
     
     const publicUrl = `https://cfpjjkfqkapamaulgysh.supabase.co/storage/v1/object/public/Student-audio/${fileName}`
-    await supabase.from('student_submissions').insert([{ 
+    await supabase.from('flair_submissions').insert([{ 
         student_name: profile.full_name.trim().toLowerCase(), 
         prompt_text: assignment?.prompt_text || "General Task",
         audio_url: publicUrl,
