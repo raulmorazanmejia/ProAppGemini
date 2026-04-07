@@ -25,14 +25,13 @@ export default function TeacherDashboard() {
       if (session) setIsAuthenticated(true)
     })
   }, [])
-
   useEffect(() => {
     if (isAuthenticated) loadData()
   }, [isAuthenticated])
 
   async function loadData() {
     const { data: pList } = await supabase.from('prompts').select('*').order('created_at', { ascending: false })
-    const { data: sList } = await supabase.from('student_submissions').select('*').order('created_at', { ascending: false })
+    const { data: sList } = await supabase.from('flair_submissions').select('*').order('created_at', { ascending: false })
     const { data: rList } = await supabase.from('students').select('*').order('full_name', { ascending: true })
     setPrompts(pList || [])
     setSubmissions(sList || [])
@@ -59,7 +58,7 @@ export default function TeacherDashboard() {
 
   const deleteStudent = async (id, name) => {
     if (confirm("Remove student and all their submissions?")) {
-      const { data: studentSubs } = await supabase.from('student_submissions').select('audio_url, feedback_url').eq('student_name', name);
+      const { data: studentSubs } = await supabase.from('flair_submissions').select('audio_url, feedback_url').eq('student_name', name);
       const pathsToDelete = [];
       studentSubs?.forEach(sub => {
         if (sub.audio_url) pathsToDelete.push(sub.audio_url.split('/').pop().split('?')[0]);
@@ -70,7 +69,7 @@ export default function TeacherDashboard() {
         if (error) alert("Warning: Could not delete audio files. " + error.message);
       }
       
-      const { error: subError } = await supabase.from('student_submissions').delete().eq('student_name', name);
+      const { error: subError } = await supabase.from('flair_submissions').delete().eq('student_name', name);
       if (subError) alert("Database Error (Submissions): " + subError.message);
       
       const { error: studentError, data: deletedStudent } = await supabase.from('students').delete().eq('id', id).select(); 
@@ -98,7 +97,7 @@ export default function TeacherDashboard() {
       const { data } = await supabase.storage.from('Student-audio').upload(fileName, audioBlob)
       if (data) {
         const url = `https://cfpjjkfqkapamaulgysh.supabase.co/storage/v1/object/public/Student-audio/${fileName}`
-        await supabase.from('student_submissions').update({ feedback_url: url }).eq('id', id)
+        await supabase.from('flair_submissions').update({ feedback_url: url }).eq('id', id)
         loadData()
       }
       setRecordingId(null)
@@ -117,7 +116,7 @@ export default function TeacherDashboard() {
         if (error) alert("Warning: Could not delete audio files. " + error.message);
       }
       
-      const { error: dbError, data: deletedSub } = await supabase.from('student_submissions').delete().eq('id', id).select();
+      const { error: dbError, data: deletedSub } = await supabase.from('flair_submissions').delete().eq('id', id).select();
       if (dbError) alert("Database Error: " + dbError.message);
       else if (!deletedSub || deletedSub.length === 0) alert("Supabase blocked the database deletion! Please enable DELETE policies in your Supabase Dashboard.");
       
