@@ -67,27 +67,71 @@ export default function StudentGatekeeper() {
     } catch (err) { alert("Mic error. Please allow access.") }
   }
 
-  const submitRecording = async () => {
-    if (!recordedBlob) return
-    setStatus('uploading')
-    const fileName = `${Date.now()}-${profile.full_name.replace(/\s+/g, '')}.webm`
-    
-    const { data: uploadData, error: uploadError } = await supabase.storage.from('Student-audio').upload(fileName, recordedBlob)
-    if (uploadError) return alert("Upload failed: " + uploadError.message)
-    
-    const publicUrl = `https://cfpjjkfqkapamaulgysh.supabase.co/storage/v1/object/public/Student-audio/${fileName}`
-    await supabase.from('flair_submissions').insert([{ 
-        student_name: profile.full_name.trim().toLowerCase(), 
-        prompt_text: assignment?.prompt_text || "General Task",
-        audio_url: publicUrl,
-        audio_path: fileName 
-    }])
-    
-    setStatus('success')
-    setPreviewUrl(null)
-    setRecordedBlob(null)
-    setTimeout(() => { setStatus('idle'); loadHistory(profile.full_name); }, 3000)
-  }
+const submitRecording = async () => {
+    if (!recordedBlob) return;
+    setStatus('uploading');
+
+    try {
+      // 1. Prepare file name
+      const fileName = `${Date.now()}-${profile?.full_name?.replace(/\s+/g, '') || 'student'}.webm`;
+      
+      // 2. Upload audio to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('Student-audio')
+        .upload(fileName, recordedBlob);
+
+      if (uploadError) throw uploadError;
+
+      const publicUrl = `https://cfpjjkfqkapamaulgysh.supabase.co/storage/v1/object/public/Student-audio/${fileName}`;
+
+      // 3. Save to database AND get the new ID back
+      const { data: dbData, error: dbError } = await supabase
+        .from('flair_submissions')
+        .insert([{ 
+          student_name: profile?.full_name?.trim().toLowerCase() || 'anonymous', 
+          prompt_text: assignment?.prompt_text || "General Task",
+          audio_url: publicUrl
+        }])
+        .select(); 
+
+      if (dbError) throw dbError;
+      const submissionId = dbData[0].id;
+
+      // 4. TRIGGER THE BRAIN (The AI Analysis)
+      setStatus('analyzing'); 
+      
+      const aiResponse = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          audioUrl: publicUrl, 
+          promptText: assignment?.prompt_text || "General Task"
+        }),
+      });
+
+      const aiData = await aiResponse.json();
+
+      // 5. Update the row with Gemini's feedback
+      if (aiData.transcript) {
+        await supabase
+          .from('flair_submissions')
+          .update({
+            transcript: aiData.transcript,
+            ai_score: aiData.ai_score,
+            ai_comment: aiData.ai_comment
+          })
+          .eq('id', submissionId);
+      }
+
+      setStatus('done');
+      if (typeof fetchSubmissions === 'function') fetchSubmissions(); 
+      
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong: " + err.message);
+      setStatus('idle');
+    }
+  }; 
 
   const discardRecording = () => {
     setPreviewUrl(null)
