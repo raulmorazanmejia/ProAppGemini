@@ -12,8 +12,8 @@ export async function POST(req) {
 
     const genAI = new GoogleGenerativeAI(apiKey);
     
-    // As requested: Using the latest 1.5 Flash model
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+    // Using the absolute standard name to avoid 404 errors
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     // 1. Fetch audio from Supabase
     const response = await fetch(audioUrl);
@@ -26,11 +26,11 @@ export async function POST(req) {
     const prompt = `You are an expert ESL Oral Communication teacher. 
     Analyze this audio recording for the prompt: "${promptText}"
     
-    Return ONLY a JSON object exactly like this:
+    Return ONLY a JSON object:
     {
-      "transcript": "word-for-word transcript here",
+      "transcript": "word-for-word transcript",
       "ai_score": 5,
-      "ai_comment": "encouraging 1-2 sentence feedback"
+      "ai_comment": "feedback"
     }`;
 
     // 3. Send to Gemini
