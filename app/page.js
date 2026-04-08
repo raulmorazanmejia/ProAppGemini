@@ -90,7 +90,9 @@ const submitRecording = async () => {
         .insert([{ 
           student_name: profile?.full_name?.trim().toLowerCase() || 'anonymous', 
           prompt_text: assignment?.prompt_text || "General Task",
-          audio_url: publicUrl
+          audio_url: publicUrl,
+          audio_path: fileName,
+          status: 'submitted'
         }])
         .select(); 
 
@@ -113,7 +115,7 @@ const submitRecording = async () => {
 
       // 5. Update the row with Gemini's feedback
       if (aiData.transcript) {
-        await supabase
+        const { error: updateError } = await supabase
           .from('flair_submissions')
           .update({
             transcript: aiData.transcript,
@@ -121,6 +123,10 @@ const submitRecording = async () => {
             ai_comment: aiData.ai_comment
           })
           .eq('id', submissionId);
+
+        if (updateError) {
+          console.error("Database Error:", updateError.message);
+        }
       }
 
       setStatus('done');
