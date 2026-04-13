@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { CheckCircle, Users, LayoutGrid, Trash2, Mic, Play } from 'lucide-react'
+import { CheckCircle, Users, LayoutGrid, Trash2, Mic, Play, RefreshCw } from 'lucide-react'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -57,9 +57,14 @@ export default function TeacherDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-8 text-slate-900">
+      <div className="max-w-7xl mx-auto flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-black tracking-tighter text-blue-600">GEMINI LAB DASHBOARD</h1>
+        <button onClick={loadData} className="p-2 hover:bg-slate-200 rounded-full transition"><RefreshCw size={20} className="text-slate-400" /></button>
+      </div>
+
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* COLUMN 1: ROSTER */}
+        {/* ROSTER */}
         <div className="lg:col-span-3">
           <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-100">
             <h2 className="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2"><Users size={14}/> Class Roster</h2>
@@ -79,7 +84,7 @@ export default function TeacherDashboard() {
           </div>
         </div>
 
-        {/* COLUMN 2: TASKS */}
+        {/* TASKS */}
         <div className="lg:col-span-4">
           <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-100">
             <h2 className="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2"><LayoutGrid size={14}/> Active Tasks</h2>
@@ -96,7 +101,7 @@ export default function TeacherDashboard() {
           </div>
         </div>
 
-        {/* COLUMN 3: SUBMISSIONS */}
+        {/* SUBMISSIONS */}
         <div className="lg:col-span-5">
           <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 min-h-[500px]">
             <h2 className="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-6">Student Submissions</h2>
@@ -111,9 +116,6 @@ export default function TeacherDashboard() {
                     </div>
                   </div>
                   <audio controls src={sub.audio_url} className="w-full mb-4 h-8" />
-                  <button className="w-full bg-slate-900 text-white p-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
-                    <Mic size={14}/> Record Feedback
-                  </button>
                 </div>
               ))}
             </div>
