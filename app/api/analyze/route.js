@@ -1,7 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createClient } from "@supabase/supabase-js";
 
-// 1. Using the Gemini 3 series through AI Studio
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL, 
@@ -12,10 +11,11 @@ export async function POST(req) {
   try {
     const { submissionId, audioUrl, promptText } = await req.json();
 
+    // 1. Fetch the student's audio
     const response = await fetch(audioUrl);
     const audioData = await response.arrayBuffer();
 
-    // THIS IS THE ONE: The alias that points to Gemini 3 Flash
+    // 2. Talk to the Gemini 3 series brain
     const model = genAI.getGenerativeModel(
       { model: "gemini-flash-latest" }, 
       { apiVersion: 'v1beta' }
@@ -23,15 +23,12 @@ export async function POST(req) {
 
     const prompt = `
       You are an expert ESL Oral Communication teacher. 
-      Analyze this student's audio response to the prompt: "${promptText}".
-      
+      Analyze this student's response to: "${promptText}".
       Provide:
-      1. A highly accurate transcript.
-      2. An AI Score (1-5) based on clarity and relevance.
-      3. Encouraging but direct feedback (max 2 sentences).
-      
-      Return ONLY this JSON format:
-      {"transcript": "...", "ai_score": 5, "ai_comment": "..."}
+      1. A Transcript.
+      2. An AI Score (1-5).
+      3. Encouraging feedback (max 2 sentences).
+      Return ONLY a JSON object: {"transcript": "...", "ai_score": 5, "ai_comment": "..."}
     `;
 
     const result = await model.generateContent([
@@ -44,12 +41,17 @@ export async function POST(req) {
       }
     ]);
 
-    // Clean up any markdown code blocks Gemini might return
     const responseText = result.response.text();
     const cleanJson = responseText.replace(/```json|```/g, "").trim();
     const aiResponse = JSON.parse(cleanJson);
 
-    // Update your new Gemini Lab database
+    // --- VICTORY LOGS ---
+    console.log("--- AI SUCCESS ---");
+    console.log("Transcript:", aiResponse.transcript);
+    console.log("Score:", aiResponse.ai_score);
+    console.log("------------------");
+
+    // 3. Save to the database
     const { error } = await supabase
       .from('submissions')
       .update({
@@ -64,7 +66,7 @@ export async function POST(req) {
     return new Response(JSON.stringify({ success: true }), { status: 200 });
 
   } catch (error) {
-    console.error("AI Brain Error:", error.message);
+    console.error("LOG ERROR:", error.message);
     return new Response(JSON.stringify({ error: error.message }), { status: 500 });
   }
 }
