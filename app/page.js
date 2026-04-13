@@ -1,264 +1,47 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { Mic, Square, CheckCircle, History, Lock, User, Loader2, Volume2, RefreshCw, Trash2, Send, Play } from 'lucide-react'
 
 const supabase = createClient(
-  'https://cfpjjkfqkapamaulgysh.supabase.co', 
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmcGpqa2Zxa2FwYW1hdWxneXNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwMDI5ODEsImV4cCI6MjA5MDU3ODk4MX0.AGm7hdpOxUYOu6q9BWjWeFWB1oMcp4ap-Wc1F9o-CT0'
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-export default function StudentGatekeeper() {
+export default function StudentPage() {
   const [assignment, setAssignment] = useState(null)
-  const [studentCode, setStudentCode] = useState('')
-  const [profile, setProfile] = useState(null)
-  const [mySubmissions, setMySubmissions] = useState([])
-  const [status, setStatus] = useState('idle') 
-  const [previewUrl, setPreviewUrl] = useState(null)
-  const [recordedBlob, setRecordedBlob] = useState(null)
-  const mediaRecorder = useRef(null)
-  const audioChunks = useRef([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const savedCode = localStorage.getItem('esl_student_code')
-    if (savedCode) verifyCode(savedCode)
-    
-    async function getTask() {
-      const { data } = await supabase.from('prompts').select('*').eq('is_active', true).limit(1).maybeSingle()
-      if (data) setAssignment(data)
+    const getActiveTask = async () => {
+      const { data } = await supabase
+        .from('assignments')
+        .select('*')
+        .eq('is_active', true)
+        .single()
+      setAssignment(data)
+      setLoading(false)
     }
-    getTask()
+    getActiveTask()
   }, [])
 
-  async function verifyCode(code) {
-    const cleanCode = code.trim().toLowerCase()
-    const { data } = await supabase.from('flair_students').select('*').eq('student_code', cleanCode).maybeSingle()
-    if (data) {
-        setProfile(data)
-        localStorage.setItem('esl_student_code', cleanCode)
-        loadHistory(data.full_name)
-    } else if (code) { alert("Invalid code."); }
-  }
-
-  async function loadHistory(name) {
-    if (!name) return;
-    const searchName = name.trim().toLowerCase(); 
-    const { data } = await supabase.from('flair_submissions')
-        .select('*') 
-        .eq('student_name', searchName) 
-        .order('created_at', { ascending: false })
-    setMySubmissions(data || [])
-  }
-
-  const startRecording = async () => {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        mediaRecorder.current = new MediaRecorder(stream)
-        audioChunks.current = []
-        mediaRecorder.current.ondataavailable = (e) => audioChunks.current.push(e.data)
-        mediaRecorder.current.onstop = () => {
-            const blob = new Blob(audioChunks.current, { type: 'audio/webm' })
-            setRecordedBlob(blob)
-            setPreviewUrl(URL.createObjectURL(blob))
-            setStatus('reviewing')
-        }
-        mediaRecorder.current.start()
-        setStatus('recording')
-    } catch (err) { alert("Mic error. Please allow access.") }
-  }
-
-  const submitRecording = async () => {
-    if (!recordedBlob) return;
-    setStatus('uploading');
-
-    try {
-      const fileName = `${Date.now()}-${profile?.full_name?.replace(/\s+/g, '') || 'student'}.webm`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('Student-audio')
-        .upload(fileName, recordedBlob);
-
-      if (uploadError) throw uploadError;
-
-      const publicUrl = `https://cfpjjkfqkapamaulgysh.supabase.co/storage/v1/object/public/Student-audio/${fileName}`;
-
-      const { data: dbData, error: dbError } = await supabase
-        .from('flair_submissions')
-        .insert([{ 
-          student_name: profile?.full_name?.trim().toLowerCase() || 'anonymous', 
-          prompt_text: assignment?.prompt_text || "General Task",
-          audio_url: publicUrl,
-          audio_path: fileName,
-          status: 'submitted'
-        }])
-        .select(); 
-
-      if (dbError) throw dbError;
-      const submissionId = dbData[0].id;
-
-      setStatus('analyzing'); 
-      
-      const aiResponse = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          audioUrl: publicUrl, 
-          promptText: assignment?.prompt_text || "General Task"
-        }),
-      });
-
-      const aiData = await aiResponse.json();
-
-      if (aiData.transcript) {
-        await supabase
-          .from('flair_submissions')
-          .update({
-            transcript: aiData.transcript,
-            ai_score: aiData.ai_score,
-            ai_comment: aiData.ai_comment
-          })
-          .eq('id', submissionId);
-      }
-
-      setStatus('done');
-      loadHistory(profile.full_name); 
-      
-    } catch (err) {
-      console.error(err);
-      alert("Something went wrong: " + err.message);
-      setStatus('idle');
-    }
-  }; 
-
-  const discardRecording = () => {
-    setPreviewUrl(null)
-    setRecordedBlob(null)
-    setStatus('idle')
-  }
-
-  if (!profile) return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-slate-900">
-      <div className="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-sm text-center">
-        <Lock className="mx-auto mb-4 text-blue-600" size={40} />
-        <h1 className="text-2xl font-bold mb-6">Class Login</h1>
-        <input type="text" placeholder="Your Code" className="w-full p-4 border rounded-2xl mb-4 text-center font-bold" 
-               onChange={(e) => setStudentCode(e.target.value)} />
-        <button onClick={() => verifyCode(studentCode)} className="w-full bg-blue-600 text-white p-4 rounded-2xl font-bold">Enter</button>
-      </div>
-    </div>
-  )
+  if (loading) return <div className="p-20 text-center font-bold">ENTERING LAB...</div>
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 md:p-12 text-slate-900 font-sans">
-      <div className="max-w-2xl mx-auto space-y-8">
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-slate-900">
+      <div className="bg-white p-10 rounded-3xl shadow-2xl max-w-md w-full text-center border border-slate-100">
+        <h1 className="text-blue-600 font-black tracking-tighter mb-6">STUDENT LAB</h1>
         
-        <div className="bg-white rounded-3xl shadow-xl p-10 text-center border relative overflow-hidden">
-          <div className="absolute top-4 right-4 text-[10px] font-bold text-slate-300 uppercase flex items-center gap-1">
-            <User size={12} /> {profile.full_name}
+        {!assignment ? (
+          <p className="text-slate-400 font-bold italic uppercase text-xs">Waiting for teacher to post a task...</p>
+        ) : (
+          <div>
+            <div className="bg-slate-50 p-6 rounded-2xl mb-6">
+              <p className="text-sm font-bold text-slate-600">{assignment.prompt_text}</p>
+            </div>
+            {/* Audio Recording UI would go here */}
+            <p className="text-[10px] text-slate-300 font-black uppercase tracking-widest">Connection: Gemini Lab</p>
           </div>
-
-          {status === 'idle' && (
-            <>
-              <h1 className="text-xl font-black mb-4 uppercase tracking-tight text-slate-400">Current Task</h1>
-              <p className="text-2xl font-bold text-slate-800 mb-10 italic">"{assignment?.prompt_text || "Waiting for task..."}"</p>
-              <button onClick={startRecording} className="w-24 h-24 rounded-full mx-auto flex items-center justify-center text-white shadow-xl bg-blue-600 hover:scale-105 transition-all">
-                <Mic size={40} />
-              </button>
-              <p className="mt-4 text-slate-400 font-bold text-xs uppercase tracking-widest">Tap to start recording</p>
-            </>
-          )}
-
-          {status === 'recording' && (
-            <>
-              <div className="w-20 h-20 bg-red-100 rounded-full mx-auto mb-6 flex items-center justify-center animate-pulse">
-                <div className="w-4 h-4 bg-red-600 rounded-full"></div>
-              </div>
-              <h2 className="text-2xl font-black text-red-600 animate-pulse mb-8">RECORDING...</h2>
-              <button onClick={() => mediaRecorder.current.stop()} className="w-20 h-20 rounded-full mx-auto flex items-center justify-center text-white shadow-xl bg-red-600 scale-110">
-                <Square size={30} fill="white" />
-              </button>
-            </>
-          )}
-
-          {status === 'reviewing' && (
-            <div className="animate-in fade-in zoom-in duration-300">
-              <h2 className="text-xl font-black text-slate-400 uppercase mb-6">Review Your Recording</h2>
-              <div className="bg-slate-50 p-6 rounded-2xl border mb-8 flex flex-col items-center gap-4">
-                <Play size={24} className="text-blue-500" />
-                <audio src={previewUrl} controls className="w-full" />
-              </div>
-              <div className="flex gap-4">
-                <button onClick={discardRecording} className="flex-1 bg-slate-100 text-slate-600 p-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200">
-                  <Trash2 size={18} /> Delete
-                </button>
-                <button onClick={submitRecording} className="flex-1 bg-blue-600 text-white p-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 shadow-lg">
-                  <Send size={18} /> Submit
-                </button>
-              </div>
-            </div>
-          )}
-
-          {(status === 'uploading' || status === 'analyzing') && (
-            <div className="py-10 flex flex-col items-center gap-4">
-                <Loader2 className="animate-spin text-blue-600" size={50} />
-                <p className="font-bold text-slate-400 uppercase tracking-widest">
-                  {status === 'uploading' ? 'Uploading Audio...' : 'AI is analyzing your voice...'}
-                </p>
-            </div>
-          )}
-
-          {status === 'done' && (
-            <div className="py-10">
-                <CheckCircle className="text-green-500 mx-auto mb-4" size={60} />
-                <h2 className="text-2xl font-black text-green-600">SUBMISSION COMPLETE!</h2>
-                <button onClick={() => setStatus('idle')} className="mt-4 text-blue-600 font-bold text-sm">Record Another</button>
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-4">
-            <div className="flex justify-between items-center px-2">
-                <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2"><History size={14}/> My History</h2>
-                <button onClick={() => loadHistory(profile.full_name)} className="text-blue-500 hover:rotate-180 transition-all duration-500">
-                    <RefreshCw size={14} />
-                </button>
-            </div>
-            <div className="space-y-4">
-                {mySubmissions.map(s => (
-                    <div key={s.id} className="bg-white p-6 rounded-3xl border shadow-sm flex flex-col gap-5">
-                        <div className="flex justify-between items-start">
-                          <p className="text-sm font-bold text-slate-700 italic">"{s.prompt_text}"</p>
-                          <span className="text-[10px] font-bold text-slate-300 uppercase">{new Date(s.created_at).toLocaleDateString()}</span>
-                        </div>
-                        
-                        <div className="space-y-4">
-                            <div className="flex flex-col gap-2">
-                                <span className="text-[10px] font-black uppercase text-slate-400">My Voice</span>
-                                <audio src={s.audio_url} controls className="w-full h-8" />
-                            </div>
-
-                            {s.transcript && (
-                              <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 space-y-2">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">AI Feedback</span>
-                                  <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">Score: {s.ai_score}/5</span>
-                                </div>
-                                <p className="text-xs italic text-slate-500">"{s.transcript}"</p>
-                                <p className="text-xs font-bold text-slate-700">{s.ai_comment}</p>
-                              </div>
-                            )}
-
-                            {s.feedback_url && (
-                                <div className="bg-green-600 p-4 rounded-2xl flex flex-col gap-2 shadow-lg">
-                                    <span className="text-[10px] font-black uppercase text-white flex items-center gap-1"><Volume2 size={12}/> Teacher Feedback</span>
-                                    <audio src={s.feedback_url} controls className="w-full h-8 invert" />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
+        )}
       </div>
     </div>
   )
