@@ -1,66 +1,60 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
 export async function POST(req) {
   try {
-    const { audioUrl, promptText } = await req.json();
-    
-    // 1. Verify the API Key exists in Vercel
-    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "API Key missing in Vercel settings" }, { status: 500 });
-    }
+    const { submissionId, audioUrl, promptText } = await req.json();
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    
-    // 2. Use the "Flash Latest" alias from your official list
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-
-    // 3. Download the audio file from your Supabase storage
     const response = await fetch(audioUrl);
-    if (!response.ok) throw new Error("Could not find the audio file in Supabase.");
-    
-    const arrayBuffer = await response.arrayBuffer();
-    const base64Audio = Buffer.from(arrayBuffer).toString("base64");
+    const audioData = await response.arrayBuffer();
 
-    // 4. The Teacher's Instructions
-    const prompt = `You are an expert ESL Oral Communication teacher. 
-    Analyze this audio recording for the specific task: "${promptText}". 
-    
-    Return ONLY a JSON object with this exact structure:
-    {
-      "transcript": "Write the word-for-word transcript here",
-      "ai_score": 5,
-      "ai_comment": "Write a helpful 1-2 sentence encouraging comment here"
-    }`;
+    // We settled on 1.5-flash-latest for the best audio-JSON stability
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
-    // 5. Ask Gemini to listen and grade
+    const prompt = `
+      You are an expert ESL Oral Communication teacher. 
+      Analyze this student's audio response to the prompt: "${promptText}".
+      
+      Provide:
+      1. A highly accurate transcript.
+      2. An AI Score (1-5) based on clarity and relevance.
+      3. Encouraging but direct feedback (max 2 sentences).
+      
+      Return ONLY this JSON format:
+      {"transcript": "...", "ai_score": 5, "ai_comment": "..."}
+    `;
+
     const result = await model.generateContent([
       prompt,
       {
         inlineData: {
-          mimeType: "audio/webm",
-          data: base64Audio,
-        },
-      },
+          data: Buffer.from(audioData).toString("base64"),
+          mimeType: "audio/webm"
+        }
+      }
     ]);
 
-    const textResponse = await result.response.text();
-    
-    // 6. Clean the response (removes any AI markdown formatting)
-    const cleanJson = textResponse.replace(/```json|```/g, "").trim();
-    const aiResponse = JSON.parse(cleanJson);
-    
-    return NextResponse.json(aiResponse);
+    const cleanText = result.response.text().replace(/```json|```/g, "").trim();
+    const aiResponse = JSON.parse(cleanText);
 
+    // This is the mapping we used: ai_comment goes into the teacher_score column
+    const { error } = await supabase
+      .from('submissions')
+      .update({
+        transcript: aiResponse.transcript,
+        ai_score: aiResponse.ai_score,
+        teacher_score: aiResponse.ai_comment 
+      })
+      .eq('id', submissionId);
+
+    if (error) throw error;
+
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
   } catch (error) {
-    console.error("BRAIN ERROR:", error.message);
-    
-    // Detect if Google is putting you in a "Time Out" (Quota)
-    if (error.message.includes("429")) {
-      return NextResponse.json({ error: "Google is busy. Wait 60 seconds and try again." }, { status: 429 });
-    }
-    
-    return NextResponse.json({ error: "The Brain had a hiccup: " + error.message }, { status: 500 });
+    console.error("AI Error:", error);
+    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
   }
 }
