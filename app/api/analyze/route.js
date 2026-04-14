@@ -6,48 +6,47 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.
 
 export async function POST(req) {
   try {
-    const { submissionId, audioUrl, promptText, imagePromptUrl, rubric } = await req.json(); // Fixed name to 'imagePromptUrl'
+    const { submissionId, audioUrl, promptText, imagePromptUrl, rubric } = await req.json();
     
-    // Fetch student audio
+    // 1. Fetch Student Audio
     const audioRes = await fetch(audioUrl);
     const audioData = await audioRes.arrayBuffer();
 
-    // Prepare Gemini parts
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }, { apiVersion: 'v1beta' });
+
+    // 2. Multimodal Prompt
     const parts = [
-      { text: `You are an expert ESL teacher. Analyze this oral response to the prompt: "${promptText}". 
-               Focus strictly on: ${rubric}. 
-               If an image is provided, ensure the student described it accurately.
-               Return JSON: {"transcript": "...", "ai_score": 1-5, "ai_comment": "2 sentences max"}` }
+      { text: `Analyze this ESL oral response for: "${promptText}". Rubric focus: ${rubric}. 
+               Return JSON: {"transcript": "full text", "ai_score": 1-5, "ai_comment": "2 feedback sentences"}` }
     ];
 
-    // Add image if it exists
-    if (imagePromptUrl) { // Use standardization
+    if (imagePromptUrl) {
       const imgRes = await fetch(imagePromptUrl);
       const imgData = await imgRes.arrayBuffer();
-      parts.push({
-        inlineData: { data: Buffer.from(imgData).toString("base64"), mimeType: "image/png" }
-      });
+      parts.push({ inlineData: { data: Buffer.from(imgData).toString("base64"), mimeType: "image/png" } });
     }
 
-    // Add audio
-    parts.push({
-      inlineData: { data: Buffer.from(audioData).toString("base64"), mimeType: "audio/webm" }
-    });
+    parts.push({ inlineData: { data: Buffer.from(audioData).toString("base64"), mimeType: "audio/webm" } });
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }, { apiVersion: 'v1beta' });
+    // 3. Generate and Parse
     const result = await model.generateContent(parts);
-    const aiResponse = JSON.parse(result.response.text().replace(/```json|```/g, "").trim());
+    const text = result.response.text();
+    const cleanJson = text.replace(/```json|```/g, "").trim();
+    const aiResponse = JSON.parse(cleanJson);
 
-    // Save initial AI draft to dashboard (stored in 'teacher_score' for internal review)
-    await supabase.from('submissions').update({
+    // 4. Update Database
+    const { error: updateError } = await supabase.from('submissions').update({
       transcript: aiResponse.transcript,
       ai_score: aiResponse.ai_score,
       teacher_score: aiResponse.ai_comment 
     }).eq('id', submissionId);
 
-    return new Response(JSON.stringify({ success: true }));
+    if (updateError) throw updateError;
+
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
 
   } catch (error) {
+    console.error("Brain Error:", error.message);
     return new Response(JSON.stringify({ error: error.message }), { status: 500 });
   }
 }
