@@ -6,7 +6,7 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.
 
 export async function POST(req) {
   try {
-    const { submissionId, audioUrl, promptText, imageUrl, rubric } = await req.json();
+    const { submissionId, audioUrl, promptText, imagePromptUrl, rubric } = await req.json(); // Fixed name to 'imagePromptUrl'
     
     // Fetch student audio
     const audioRes = await fetch(audioUrl);
@@ -21,8 +21,8 @@ export async function POST(req) {
     ];
 
     // Add image if it exists
-    if (imageUrl) {
-      const imgRes = await fetch(imageUrl);
+    if (imagePromptUrl) { // Use standardization
+      const imgRes = await fetch(imagePromptUrl);
       const imgData = await imgRes.arrayBuffer();
       parts.push({
         inlineData: { data: Buffer.from(imgData).toString("base64"), mimeType: "image/png" }
@@ -38,10 +38,11 @@ export async function POST(req) {
     const result = await model.generateContent(parts);
     const aiResponse = JSON.parse(result.response.text().replace(/```json|```/g, "").trim());
 
+    // Save initial AI draft to dashboard (stored in 'teacher_score' for internal review)
     await supabase.from('submissions').update({
       transcript: aiResponse.transcript,
       ai_score: aiResponse.ai_score,
-      teacher_score: aiResponse.ai_comment // Stored here for dashboard review
+      teacher_score: aiResponse.ai_comment 
     }).eq('id', submissionId);
 
     return new Response(JSON.stringify({ success: true }));
