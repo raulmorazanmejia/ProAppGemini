@@ -1,68 +1,52 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
 export async function POST(req) {
   try {
-    const { audioUrl, promptText, rubric } = await req.json();
+    const { submissionId, audioUrl, promptText, imageUrl, rubric } = await req.json();
     
-    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "API Key missing" }, { status: 500 });
+    // Fetch student audio
+    const audioRes = await fetch(audioUrl);
+    const audioData = await audioRes.arrayBuffer();
+
+    // Prepare Gemini parts
+    const parts = [
+      { text: `You are an expert ESL teacher. Analyze this oral response to the prompt: "${promptText}". 
+               Focus strictly on: ${rubric}. 
+               If an image is provided, ensure the student described it accurately.
+               Return JSON: {"transcript": "...", "ai_score": 1-5, "ai_comment": "2 sentences max"}` }
+    ];
+
+    // Add image if it exists
+    if (imageUrl) {
+      const imgRes = await fetch(imageUrl);
+      const imgData = await imgRes.arrayBuffer();
+      parts.push({
+        inlineData: { data: Buffer.from(imgData).toString("base64"), mimeType: "image/png" }
+      });
     }
 
-    // Use v1beta path as requested
-    const genAI = new GoogleGenerativeAI(apiKey, { apiVersion: 'v1beta' });
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+    // Add audio
+    parts.push({
+      inlineData: { data: Buffer.from(audioData).toString("base64"), mimeType: "audio/webm" }
+    });
 
-    const response = await fetch(audioUrl);
-    if (!response.ok) throw new Error("Could not find the audio file.");
-    
-    const arrayBuffer = await response.arrayBuffer();
-    const base64Audio = Buffer.from(arrayBuffer).toString("base64");
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }, { apiVersion: 'v1beta' });
+    const result = await model.generateContent(parts);
+    const aiResponse = JSON.parse(result.response.text().replace(/```json|```/g, "").trim());
 
-    let focusInstruction = "";
-    if (rubric === "Pronunciation") {
-      focusInstruction = "Focus specifically on phonetic clarity, pronunciation, intonation, and clarity of sounds.";
-    } else if (rubric === "Grammar") {
-      focusInstruction = "Focus specifically on grammatical accuracy, sentence structure, and tense usage.";
-    } else if (rubric === "Vocabulary") {
-      focusInstruction = "Focus specifically on vocabulary choice, word variety, and appropriate usage of terms.";
-    } else {
-      focusInstruction = "Provide a general evaluation of the student's speaking performance.";
-    }
+    await supabase.from('submissions').update({
+      transcript: aiResponse.transcript,
+      ai_score: aiResponse.ai_score,
+      teacher_score: aiResponse.ai_comment // Stored here for dashboard review
+    }).eq('id', submissionId);
 
-    const prompt = `You are an expert ESL Oral Communication teacher. 
-    Analyze this audio recording for the task: "${promptText}". 
-    ${focusInstruction}
-    
-    Your feedback MUST be exactly 2 sentences long. No more, no less.
-    
-    Return ONLY a JSON object with this exact structure:
-    {
-      "transcript": "Word-for-word transcript",
-      "ai_score": 1-5 integer,
-      "ai_comment": "Exactly two sentences of feedback."
-    }`;
-
-    const result = await model.generateContent([
-      prompt,
-      {
-        inlineData: {
-          mimeType: "audio/mpeg",
-          data: base64Audio,
-        },
-      },
-    ]);
-
-    const textResponse = await result.response.text();
-    const cleanJson = textResponse.replace(/```json|```/g, "").trim();
-    const aiResponse = JSON.parse(cleanJson);
-    
-    return NextResponse.json(aiResponse);
+    return new Response(JSON.stringify({ success: true }));
 
   } catch (error) {
-    console.error("BRAIN ERROR:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
   }
 }
-
