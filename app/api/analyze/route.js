@@ -4,51 +4,44 @@ import { createClient } from "@supabase/supabase-js";
 export async function POST(req) {
   try {
     const { submissionId, audioUrl, promptText, imagePromptUrl, rubric } = await req.json();
-    console.log("Processing Submission:", submissionId);
-
+    
+    // The STABLE 2026 production model string
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    // 1. Fetch Student Audio
     const audioRes = await fetch(audioUrl);
-    const audioData = await audioRes.arrayBuffer();
+    const audioBuffer = await audioRes.arrayBuffer();
 
-    // 2. Initialize the correct 2026 Model
-    const model = genAI.getGenerativeModel({ model: "gemini-3.0-flash" });
+    const parts = [
+      { text: `System: Expert ESL Tutor. Analyze audio for: "${promptText}". Focus on: ${rubric}. 
+               Return JSON ONLY: {"transcript": "...", "ai_score": 5, "ai_comment": "2 sentences feedback."}` }
+    ];
 
-    // 3. Multimodal Prompt Construction
-    const prompt = `
-      System: Expert ESL Tutor. 
-      Task: Transcribe and analyze the audio for: "${promptText}".
-      Rubric: ${rubric || 'General communication'}.
-      Constraint: Return ONLY JSON: {"transcript": "...", "ai_score": 5, "ai_comment": "2 sentences."}
-    `;
-
-    const parts = [{ text: prompt }];
     if (imagePromptUrl) {
       const imgRes = await fetch(imagePromptUrl);
-      const imgData = await imgRes.arrayBuffer();
-      parts.push({ inlineData: { data: Buffer.from(imgData).toString("base64"), mimeType: "image/png" } });
+      const imgBuffer = await imgRes.arrayBuffer();
+      parts.push({ inlineData: { data: Buffer.from(imgBuffer).toString("base64"), mimeType: "image/png" } });
     }
-    parts.push({ inlineData: { data: Buffer.from(audioData).toString("base64"), mimeType: "audio/webm" } });
 
-    // 4. Generate & Parse
+    parts.push({ inlineData: { data: Buffer.from(audioBuffer).toString("base64"), mimeType: "audio/webm" } });
+
     const result = await model.generateContent(parts);
-    const responseText = result.response.text().replace(/```json|```/g, "").trim();
-    const aiResponse = JSON.parse(responseText);
+    const responseText = result.response.text();
+    
+    // Safety: Remove any markdown backticks the AI might include
+    const cleanJson = responseText.replace(/```json|```/g, "").trim();
+    const aiResponse = JSON.parse(cleanJson);
 
-    // 5. Update DB (Teacher_score is the AI draft)
-    const { error: dbError } = await supabase.from('submissions').update({
+    await supabase.from('submissions').update({
       transcript: aiResponse.transcript,
       ai_score: aiResponse.ai_score,
       teacher_score: aiResponse.ai_comment 
     }).eq('id', submissionId);
 
-    if (dbError) throw dbError;
-    return new Response(JSON.stringify({ success: true }), { status: 200 });
-
+    return new Response(JSON.stringify({ success: true }));
   } catch (error) {
-    console.error("BRAIN FAILURE:", error.message);
+    console.error("ANALYSIS FAILED:", error.message);
     return new Response(JSON.stringify({ error: error.message }), { status: 500 });
   }
 }
